@@ -1,3 +1,4 @@
+// main.cc
 #include <fcntl.h>
 #include <unistd.h>
 #include <stdio.h>
@@ -8,6 +9,9 @@
 
 #include <xf86drm.h>
 #include <xf86drmMode.h>
+
+// Объявляем функцию отрисовки курсора, реализованную в mouse.cc
+extern "C" void DrawCursor(void* fb_buffer, int fb_width, int fb_height);
 
 int main() {
     // Открываем DRM устройство (обычно /dev/dri/card0)
@@ -79,7 +83,7 @@ int main() {
     uint32_t fb;
     if (drmModeAddFB(fd, mode.hdisplay, mode.vdisplay, 24, 32, pitch, handle, &fb)) {
         perror("drmModeAddFB не выполнен");
-        // Не забываем очистить созданный dumb buffer
+        // Освобождаем созданный dumb buffer
         struct drm_mode_destroy_dumb destroy = {};
         destroy.handle = handle;
         drmIoctl(fd, DRM_IOCTL_MODE_DESTROY_DUMB, &destroy);
@@ -116,8 +120,15 @@ int main() {
         return EXIT_FAILURE;
     }
 
-    // Заполняем буфер белым цветом (0xffffffff для ARGB8888)
-    memset(buffer, 0xff, size);
+    // Заливаем весь буфер белым цветом (ARGB: 0xFFFFFFFF)
+    uint32_t *fb_ptr = (uint32_t*)buffer;
+    size_t num_pixels = mode.hdisplay * mode.vdisplay;
+    for (size_t i = 0; i < num_pixels; i++) {
+         fb_ptr[i] = 0xFF000000;
+    }
+
+    // Отрисовываем курсор по центру экрана
+    DrawCursor(buffer, mode.hdisplay, mode.vdisplay);
 
     // Переключаем на выбранный режим с нашим фреймбуфером
     if (drmModeSetCrtc(fd, crtc_id, fb, 0, 0, &connector_id, 1, &mode)) {
@@ -133,12 +144,12 @@ int main() {
         return EXIT_FAILURE;
     }
 
-    // Оставляем белый экран видимым в течение 5 секунд
+    // Главный цикл (здесь можно добавить обработку событий)
     for (;;) {
         sleep(1);
     }
 
-    // Освобождаем ресурсы
+    // Освобождение ресурсов (код недостижим, но должен быть для корректного завершения)
     munmap(buffer, size);
     drmModeRmFB(fd, fb);
     struct drm_mode_destroy_dumb destroy = {};
