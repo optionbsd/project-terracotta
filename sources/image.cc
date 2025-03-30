@@ -3,20 +3,19 @@
 #include <stdlib.h>
 #include <stdio.h>
 
-// stb_image — это легковесная библиотека для загрузки изображений.
+// Используем stb_image для загрузки PNG.
 // Скачайте stb_image.h и поместите его в каталог проекта.
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
 
-// Структура, описывающая изображение: массив пикселей, ширину и высоту.
+// Структура для хранения изображения: массив пикселей, ширина и высота.
 struct TCImage {
     uint32_t* pixels;
     int width;
     int height;
 };
 
-// Функция TCImageToArray загружает PNG по указанному пути, конвертирует его
-// в 32-битный формат (ARGB8888) и возвращает структуру с данными.
+// Функция TCImageToArray загружает PNG, конвертирует его в формат ARGB8888 и возвращает данные.
 TCImage TCImageToArray(const char *path) {
     int w, h, channels;
     // Принудительно загружаем 4 канала (RGBA)
@@ -32,13 +31,13 @@ TCImage TCImageToArray(const char *path) {
          stbi_image_free(data);
          exit(EXIT_FAILURE);
     }
-    // Преобразуем каждый пиксель из формата RGBA в ARGB
+    // Преобразуем каждый пиксель из формата RGBA в ARGB (8 бит на компоненту)
     for (size_t i = 0; i < num_pixels; i++) {
          unsigned char r = data[i * 4 + 0];
          unsigned char g = data[i * 4 + 1];
          unsigned char b = data[i * 4 + 2];
          unsigned char a = data[i * 4 + 3];
-         uint32_t pixel = (a << 24) | (r << 16) | (g << 8) | (b);
+         uint32_t pixel = (a << 24) | (r << 16) | (g << 8) | b;
          pixels[i] = pixel;
     }
     stbi_image_free(data);

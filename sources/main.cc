@@ -10,11 +10,11 @@
 #include <xf86drm.h>
 #include <xf86drmMode.h>
 
-// Объявляем функцию отрисовки курсора, реализованную в mouse.cc
-extern "C" void DrawCursor(void* fb_buffer, int fb_width, int fb_height);
+// Объявляем функцию главного цикла обработки мыши, реализованную в mouse.cc.
+extern "C" void MouseEventLoop(void* fb_buffer, int fb_width, int fb_height);
 
 int main() {
-    // Открываем DRM устройство (обычно /dev/dri/card0)
+    // Открываем DRM-устройство (обычно /dev/dri/card0)
     int fd = open("/dev/dri/card0", O_RDWR | O_CLOEXEC);
     if (fd < 0) {
         perror("Ошибка открытия /dev/dri/card0");
@@ -48,7 +48,7 @@ int main() {
         return EXIT_FAILURE;
     }
 
-    // Выбираем первый доступный режим (как пример)
+    // Выбираем первый доступный режим
     drmModeModeInfo mode = connector->modes[0];
 
     // Получаем энкодер для данного коннектора
@@ -83,7 +83,6 @@ int main() {
     uint32_t fb;
     if (drmModeAddFB(fd, mode.hdisplay, mode.vdisplay, 24, 32, pitch, handle, &fb)) {
         perror("drmModeAddFB не выполнен");
-        // Освобождаем созданный dumb buffer
         struct drm_mode_destroy_dumb destroy = {};
         destroy.handle = handle;
         drmIoctl(fd, DRM_IOCTL_MODE_DESTROY_DUMB, &destroy);
@@ -120,17 +119,7 @@ int main() {
         return EXIT_FAILURE;
     }
 
-    // Заливаем весь буфер белым цветом (ARGB: 0xFFFFFFFF)
-    uint32_t *fb_ptr = (uint32_t*)buffer;
-    size_t num_pixels = mode.hdisplay * mode.vdisplay;
-    for (size_t i = 0; i < num_pixels; i++) {
-         fb_ptr[i] = 0xFF000000;
-    }
-
-    // Отрисовываем курсор по центру экрана
-    DrawCursor(buffer, mode.hdisplay, mode.vdisplay);
-
-    // Переключаем на выбранный режим с нашим фреймбуфером
+    // Устанавливаем режим с нашим фреймбуфером
     if (drmModeSetCrtc(fd, crtc_id, fb, 0, 0, &connector_id, 1, &mode)) {
         perror("drmModeSetCrtc не выполнен");
         munmap(buffer, size);
@@ -144,12 +133,10 @@ int main() {
         return EXIT_FAILURE;
     }
 
-    // Главный цикл (здесь можно добавить обработку событий)
-    for (;;) {
-        sleep(1);
-    }
+    // Запускаем главный цикл обработки мыши (функция не возвращается)
+    MouseEventLoop(buffer, mode.hdisplay, mode.vdisplay);
 
-    // Освобождение ресурсов (код недостижим, но должен быть для корректного завершения)
+    // Код ниже не выполнится, но оставлен для корректного освобождения ресурсов.
     munmap(buffer, size);
     drmModeRmFB(fd, fb);
     struct drm_mode_destroy_dumb destroy = {};
