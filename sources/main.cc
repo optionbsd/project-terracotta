@@ -6,12 +6,11 @@
 #include <string.h>
 #include <sys/mman.h>
 #include <stdint.h>
-#include <errno.h>
 
 #include <xf86drm.h>
 #include <xf86drmMode.h>
 
-// Объявления функций композиции слоёв из compose.cc
+// Объявления функций компоновки из compose.cc
 typedef struct {
     int z;
     int width;
@@ -20,17 +19,15 @@ typedef struct {
 } CTLayer;
 
 extern CTLayer* CTAddLayer(int z, int width, int height, uint32_t init_color);
-extern uint32_t* CTEditLayer(CTLayer* layer);
-extern int CTRemoveLayer(CTLayer* layer);
 extern void CTComposeLayers(uint32_t* dest, int width, int height);
 
-// Объявления функций для работы с курсором из cursor.cc
+// Функции работы с курсором из cursor.cc
 extern "C" void CTInitCursor(int scr_w, int scr_h);
 extern "C" void CTUpdateCursor();
 extern "C" void CTDrawCursorOnLayer(uint32_t* layer_data, int layer_width, int layer_height);
 
 int main() {
-    // Открываем DRM-устройство (обычно /dev/dri/card0)
+    // Открываем DRM-устройство (/dev/dri/card0)
     int fd = open("/dev/dri/card0", O_RDWR | O_CLOEXEC);
     if (fd < 0) {
         perror("Ошибка открытия /dev/dri/card0");
@@ -83,7 +80,7 @@ int main() {
     struct drm_mode_create_dumb create = {};
     create.width = mode.hdisplay;
     create.height = mode.vdisplay;
-    create.bpp = 32; // 32 бита на пиксель
+    create.bpp = 32;
     if (drmIoctl(fd, DRM_IOCTL_MODE_CREATE_DUMB, &create) < 0) {
         perror("DRM_IOCTL_MODE_CREATE_DUMB не выполнен");
         drmModeFreeConnector(connector);
@@ -135,7 +132,7 @@ int main() {
         return EXIT_FAILURE;
     }
     
-    // Устанавливаем режим с нашим фреймбуфером
+    // Устанавливаем режим с фреймбуфером
     if (drmModeSetCrtc(fd, crtc_id, fb, 0, 0, &connector_id, 1, &mode)) {
         perror("drmModeSetCrtc не выполнен");
         munmap(buffer, size);
@@ -150,45 +147,40 @@ int main() {
     }
     
     // Создаем виртуальные слои:
-    // Фон (z = 0): заливаем черным (непрозрачным)
+    // Слой фона (z = 0) – фон остаётся неизменным (черный), создаём один раз.
     CTLayer* background = CTAddLayer(0, mode.hdisplay, mode.vdisplay, 0xFF000000);
-    // Слой курсора (z = 1): изначально полностью прозрачный
+    // Слой курсора (z = 1) – обновляется каждый кадр.
     CTLayer* cursorLayer = CTAddLayer(1, mode.hdisplay, mode.vdisplay, 0x00000000);
     
     // Инициализируем курсор (загрузка изображения, открытие /dev/sysmouse)
     CTInitCursor(mode.hdisplay, mode.vdisplay);
     
-    // Выделяем временный буфер для композиции всех слоев (итоговое изображение)
-    uint32_t* composed = (uint32_t*)malloc(mode.hdisplay * mode.vdisplay * sizeof(uint32_t));
+    // Выделяем итоговый буфер для композиции
+    int num_pixels = mode.hdisplay * mode.vdisplay;
+    uint32_t* composed = (uint32_t*)malloc(num_pixels * sizeof(uint32_t));
     if (!composed) {
          perror("Ошибка выделения памяти для композиции");
-         // Освобождаем ресурсы...
          exit(EXIT_FAILURE);
     }
     
-    // Главный цикл: 60 FPS – 60 раз в секунду обновляем слои, композицию и выводим итог на экран.
+    // Главный цикл: обновление слоёв и композиция с частотой ~60 FPS
     while (1) {
-         // Обновляем фон: заливаем background черным (непрозрачным)
-         int num_pixels = mode.hdisplay * mode.vdisplay;
-         for (int i = 0; i < num_pixels; i++) {
-             background->data[i] = 0xFF000000;
-         }
-         
-         // Обновляем позицию курсора
+         // Фон остаётся неизменным, поэтому background->data не меняется.
+         // Обновляем позицию курсора и перерисовываем слой курсора.
          CTUpdateCursor();
-         // Обновляем слой курсора: очищаем его и рисуем курсор в текущей позиции
          CTDrawCursorOnLayer(cursorLayer->data, mode.hdisplay, mode.vdisplay);
          
-         // Компонуем все слои (background и cursorLayer) в итоговый буфер composed
+         // Компонуем два слоя: сначала копируем фон, затем накладываем курсор.
          CTComposeLayers(composed, mode.hdisplay, mode.vdisplay);
-         // Копируем итоговое изображение в framebuffer
+         
+         // Копируем итоговое изображение в фреймбуфер.
          memcpy(buffer, composed, num_pixels * sizeof(uint32_t));
          
-         // Задержка ~16 мс для 60 FPS
+         // Задержка ~16 мс для 60 FPS.
          usleep(16000);
     }
     
-    // Освобождение ресурсов (код недостижим, но оставлен для корректного завершения)
+    // (Код ниже не выполнится)
     free(composed);
     munmap(buffer, size);
     drmModeRmFB(fd, fb);

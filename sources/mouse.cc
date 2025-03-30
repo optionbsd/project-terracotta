@@ -7,7 +7,6 @@
 #include <unistd.h>
 #include <errno.h>
 
-// Для работы с sysmouse
 #include <sys/mouse.h>
 #include <sys/consio.h>
 
@@ -20,7 +19,7 @@ struct TCImage {
 
 TCImage TCImageToArray(const char* path);
 
-// Глобальные переменные для работы с курсором
+// Глобальные переменные для курсора
 static int sysmouse_fd = -1;
 static int cursor_x = 0;
 static int cursor_y = 0;
@@ -28,7 +27,7 @@ static int screen_width = 0;
 static int screen_height = 0;
 static TCImage global_cursor; // Изображение курсора (загружается один раз)
 
-// Инициализация курсора: задаются размеры экрана, загружается изображение курсора и открывается /dev/sysmouse.
+// Инициализация курсора: устанавливаются размеры экрана, загружается изображение и открывается /dev/sysmouse.
 extern "C" void CTInitCursor(int scr_w, int scr_h) {
     screen_width = scr_w;
     screen_height = scr_h;
@@ -41,11 +40,8 @@ extern "C" void CTInitCursor(int scr_w, int scr_h) {
     }
 }
 
-// Обновление позиции курсора.
-// sysmouse (уровень 0) возвращает 5-байтные пакеты, где:
-//  Byte2 и Byte4 суммируются для горизонтального смещения,
-//  Byte3 и Byte5 суммируются для вертикального смещения,
-// при этом вертикальное смещение инвертируется (чтобы движение вниз двигало курсор вниз).
+// Обновление позиции курсора с использованием 5-байтных пакетов sysmouse.
+// Вертикальное смещение инвертируется, чтобы движение вниз двигало курсор вниз.
 extern "C" void CTUpdateCursor() {
     if (sysmouse_fd < 0)
         return;
@@ -63,17 +59,13 @@ extern "C" void CTUpdateCursor() {
         if (cursor_y > screen_height - global_cursor.height)
             cursor_y = screen_height - global_cursor.height;
     }
-    // Если read вернул -1 с errno==EAGAIN – данных больше нет.
 }
 
-// Рисует курсор (global_cursor) на переданном буфере слоя.
-// Перед отрисовкой слой очищается (прозрачным фоном).
+// Рисует курсор на слое. Здесь оптимизировано: вместо цикла по всему экрану очищается весь слой через memset.
 extern "C" void CTDrawCursorOnLayer(uint32_t* layer_data, int layer_width, int layer_height) {
-    // Очистка слоя: заполняем прозрачным цветом (альфа=0)
     int num_pixels = layer_width * layer_height;
-    for (int i = 0; i < num_pixels; i++) {
-         layer_data[i] = 0x00000000;
-    }
+    // Очищаем слой прозрачным цветом
+    memset(layer_data, 0, num_pixels * sizeof(uint32_t));
     // Рисуем курсор
     for (int y = 0; y < global_cursor.height; y++) {
         int dst_y = cursor_y + y;
@@ -87,7 +79,6 @@ extern "C" void CTDrawCursorOnLayer(uint32_t* layer_data, int layer_width, int l
             uint8_t src_a = (src_pixel >> 24) & 0xFF;
             if (src_a == 0)
                 continue;
-            // Простейший вариант: просто копируем пиксель (так как фон прозрачный)
             layer_data[dst_y * layer_width + dst_x] = src_pixel;
         }
     }

@@ -1,23 +1,21 @@
 // compose.cc
 #include <stdlib.h>
 #include <stdint.h>
+#include <string.h>
 
-// Простая реализация системы слоёв.
-// Каждый слой имеет размеры, z-координату и буфер пикселей в формате ARGB.
 #define MAX_LAYERS 10
 
 typedef struct {
     int z;
     int width;
     int height;
-    uint32_t *data; // массив пикселей (ARGB)
+    uint32_t *data; // ARGB
 } CTLayer;
 
-// Глобальный массив указателей на слои и их количество.
 static CTLayer* layers[MAX_LAYERS];
 static int num_layers = 0;
 
-// Добавление нового слоя. Инициализируется цветом init_color.
+// Добавление нового слоя с начальным цветом init_color.
 CTLayer* CTAddLayer(int z, int width, int height, uint32_t init_color) {
     CTLayer* layer = (CTLayer*)malloc(sizeof(CTLayer));
     if (!layer)
@@ -30,6 +28,8 @@ CTLayer* CTAddLayer(int z, int width, int height, uint32_t init_color) {
         free(layer);
         return NULL;
     }
+    // Если цвет одинаковый для всех пикселей – можно воспользоваться memset, но поскольку init_color не обязательно 0,
+    // заполним цикл (оптимизировать можно через loop unrolling или SIMD при необходимости).
     for (int i = 0; i < width * height; i++) {
          layer->data[i] = init_color;
     }
@@ -53,12 +53,12 @@ CTLayer* CTAddLayer(int z, int width, int height, uint32_t init_color) {
     }
 }
 
-// Возвращает указатель на данные слоя для редактирования.
+// Возвращает данные слоя для редактирования.
 uint32_t* CTEditLayer(CTLayer* layer) {
     return layer->data;
 }
 
-// Удаляет слой, освобождая память.
+// Удаление слоя.
 int CTRemoveLayer(CTLayer* layer) {
     int found = 0;
     for (int i = 0; i < num_layers; i++) {
@@ -76,25 +76,23 @@ int CTRemoveLayer(CTLayer* layer) {
     return found;
 }
 
-// Композиция всех слоев в один итоговый буфер.
-// Слои компонуются в порядке возрастания z.
-// Итоговый буфер dest должен иметь размеры width*height.
+// Оптимизированная компоновка для двух слоёв (фон и верхний).
+// Предполагается, что слой с индексом 0 – фон, а остальные накладываются сверху.
 void CTComposeLayers(uint32_t* dest, int width, int height) {
     int num_pixels = width * height;
-    // Изначально очищаем итоговый буфер прозрачным (альфа = 0)
-    for (int i = 0; i < num_pixels; i++) {
-         dest[i] = 0x00000000;
-    }
-    // Накладываем каждый слой по порядку.
-    // Применяем простое альфа-блендинг: out = src * alpha + dst * (1 - alpha)
-    for (int l = 0; l < num_layers; l++) {
-         CTLayer* layer = layers[l];
+    if (num_layers < 1)
+         return;
+    // Копируем фон (предполагается, что фон полностью заполнен).
+    memcpy(dest, layers[0]->data, num_pixels * sizeof(uint32_t));
+    // Для каждого дополнительного слоя (например, курсора) выполняем быстрое наложение:
+    for (int l = 1; l < num_layers; l++) {
+         CTLayer* top = layers[l];
          for (int i = 0; i < num_pixels; i++) {
-             uint32_t src = layer->data[i];
+             uint32_t src = top->data[i];
              uint8_t src_a = (src >> 24) & 0xFF;
              if (src_a == 0)
                 continue;
-             float alpha = src_a / 255.0f;
+             // Выполняем альфа-блендинг: out = src * alpha + dest * (1 - alpha)
              uint32_t dst = dest[i];
              uint8_t dst_r = (dst >> 16) & 0xFF;
              uint8_t dst_g = (dst >> 8) & 0xFF;
@@ -102,6 +100,7 @@ void CTComposeLayers(uint32_t* dest, int width, int height) {
              uint8_t src_r = (src >> 16) & 0xFF;
              uint8_t src_g = (src >> 8) & 0xFF;
              uint8_t src_b = src & 0xFF;
+             float alpha = src_a / 255.0f;
              uint8_t out_r = (uint8_t)(src_r * alpha + dst_r * (1 - alpha));
              uint8_t out_g = (uint8_t)(src_g * alpha + dst_g * (1 - alpha));
              uint8_t out_b = (uint8_t)(src_b * alpha + dst_b * (1 - alpha));

@@ -3,8 +3,6 @@
 #include <stdlib.h>
 #include <stdio.h>
 
-// Используем stb_image для загрузки PNG.
-// Скачайте stb_image.h и поместите его в каталог проекта.
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
 
@@ -15,10 +13,9 @@ struct TCImage {
     int height;
 };
 
-// Функция TCImageToArray загружает PNG, конвертирует его в формат ARGB8888 и возвращает данные.
+// Функция загружает PNG, конвертирует его в ARGB8888 и возвращает данные.
 TCImage TCImageToArray(const char *path) {
     int w, h, channels;
-    // Принудительно загружаем 4 канала (RGBA)
     unsigned char* data = stbi_load(path, &w, &h, &channels, 4);
     if (!data) {
          fprintf(stderr, "Не удалось загрузить изображение %s\n", path);
@@ -31,7 +28,6 @@ TCImage TCImageToArray(const char *path) {
          stbi_image_free(data);
          exit(EXIT_FAILURE);
     }
-    // Преобразуем каждый пиксель из формата RGBA в ARGB (8 бит на компоненту)
     for (size_t i = 0; i < num_pixels; i++) {
          unsigned char r = data[i * 4 + 0];
          unsigned char g = data[i * 4 + 1];
