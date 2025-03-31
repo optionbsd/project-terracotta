@@ -32,6 +32,7 @@ extern "C" void CTInitCursor(int scr_w, int scr_h) {
     screen_width = scr_w;
     screen_height = scr_h;
     global_cursor = TCImageToArray("build/res/cursor.png");
+    // Начальное положение курсора по центру экрана (курсор полностью виден)
     cursor_x = (screen_width - global_cursor.width) / 2;
     cursor_y = (screen_height - global_cursor.height) / 2;
     sysmouse_fd = open("/dev/sysmouse", O_RDONLY | O_NONBLOCK);
@@ -52,12 +53,16 @@ extern "C" void CTUpdateCursor() {
         int dy = -(((int)((signed char)packet[2])) + ((int)((signed char)packet[4])));
         cursor_x += dx;
         cursor_y += dy;
-        if (cursor_x < 0) cursor_x = 0;
-        if (cursor_y < 0) cursor_y = 0;
-        if (cursor_x > screen_width - global_cursor.width)
-            cursor_x = screen_width - global_cursor.width;
-        if (cursor_y > screen_height - global_cursor.height)
-            cursor_y = screen_height - global_cursor.height;
+        // Ограничение курсора: слева и сверху не выходит за пределы (минимум 0),
+        // справа и снизу курсор может выйти за пределы экрана на размер своей ширины/высоты.
+        if (cursor_x < 0)
+            cursor_x = 0;
+        if (cursor_y < 0)
+            cursor_y = 0;
+        if (cursor_x > screen_width)
+            cursor_x = screen_width;
+        if (cursor_y > screen_height)
+            cursor_y = screen_height;
     }
 }
 
